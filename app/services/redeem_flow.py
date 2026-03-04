@@ -3,6 +3,7 @@
 协调用户兑换流程，包括验证、Team选择、邀请发送、事务处理和并发控制
 """
 import logging
+import asyncio
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy import select, and_
@@ -302,7 +303,7 @@ class RedeemFlowService:
                 target_team = res.scalar_one_or_none()
                 
                 if not target_team:
-                    await self._rollback_redemption(db_session, code, team_id_final)
+                    await self._rollback_redemption(db_session, code, team_id_final, email=email)
                     if attempt < max_retries - 1:
                         current_target_team_id = None
                         continue
@@ -312,7 +313,7 @@ class RedeemFlowService:
                 access_token = await self.team_service.ensure_access_token(target_team, db_session)
                 if not access_token:
                     logger.warning(f"无法获取有效的 Access Token (Team {team_id_final})")
-                    await self._rollback_redemption(db_session, code, team_id_final)
+                    await self._rollback_redemption(db_session, code, team_id_final, email=email)
                     if attempt < max_retries - 1:
                         current_target_team_id = None
                         continue
@@ -339,6 +340,9 @@ class RedeemFlowService:
                         )
                         db_session.add(redemption_record)
                         
+                    # 延时 2 秒再同步，等待 ChatGPT API 状态生效 (防止虚假成功)
+                    await asyncio.sleep(2)
+                    
                     # 同步最新成员数并校验邀请是否生效
                     sync_res = await self.team_service.sync_team_info(team_id_final, db_session)
                     
@@ -359,8 +363,8 @@ class RedeemFlowService:
                                     target_team.status = "error"
                                 await db_session.commit()
                         
-                        # 触发回滚并进入重试逻辑
-                        await self._rollback_redemption(db_session, code, team_id_final)
+                        # 触发回退并进入重试逻辑
+                        await self._rollback_redemption(db_session, code, team_id_final, email=email)
                         last_error = "邀请发送后校验失败（账号可能异常）"
                         if attempt < max_retries - 1:
                             current_target_team_id = None
@@ -370,7 +374,6 @@ class RedeemFlowService:
                     logger.info(f"兑换成功: {email} 加入 Team {team_id_final}")
 
                     # 检查库存并发送通知 (异步不阻塞)
-                    import asyncio
                     asyncio.create_task(notification_service.check_and_notify_low_stock())
 
                     return {
@@ -386,7 +389,7 @@ class RedeemFlowService:
                     }
                 else:
                     logger.warning(f"API 邀请失败 (尝试 {attempt + 1}): {invite_result['error']}")
-                    await self._rollback_redemption(db_session, code, team_id_final)
+                    await self._rollback_redemption(db_session, code, team_id_final, email=email)
                     
                     error_msg = invite_result.get("error", "未知错误")
                     
@@ -421,7 +424,7 @@ class RedeemFlowService:
                 logger.error(f"兑换尝试异常 (第 {attempt + 1} 次): {e}")
                 if team_id_final:
                     try:
-                        await self._rollback_redemption(db_session, code, team_id_final)
+                        await self._rollback_redemption(db_session, code, team_id_final, email=email)
                     except:
                         pass
                 if attempt < max_retries - 1:
@@ -432,7 +435,8 @@ class RedeemFlowService:
         self,
         db_session: AsyncSession,
         code: str,
-        team_id: int
+        team_id: int,
+        email: Optional[str] = None
     ):
         """回退兑换占位"""
         try:
@@ -441,7 +445,16 @@ class RedeemFlowService:
                 await db_session.rollback()
                 
             async with db_session.begin():
-                # 回退兑换码状态
+                # 1. 删除可能已创建的使用记录 (针对 Phase 3 的回退)
+                if email:
+                    stmt = delete(RedemptionRecord).where(
+                        RedemptionRecord.code == code,
+                        RedemptionRecord.team_id == team_id,
+                        RedemptionRecord.email == email
+                    )
+                    await db_session.execute(stmt)
+
+                # 2. 回退兑换码状态
                 stmt = select(RedemptionCode).where(RedemptionCode.code == code).with_for_update()
                 result = await db_session.execute(stmt)
                 redemption_code = result.scalar_one_or_none()

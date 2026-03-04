@@ -3,6 +3,7 @@ Team 管理服务
 用于管理 Team 账号的导入、同步、成员管理等功能
 """
 import logging
+import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy import select, update, delete, func
@@ -1395,6 +1396,8 @@ class TeamService:
                 }
 
             # 5. 更新成员数并二次校验邀请是否真的生效 (防止接口返回 200 但实际未加入)
+            # 延时 2 秒再同步，等待 API 状态生效
+            await asyncio.sleep(2)
             sync_res = await self.sync_team_info(team_id, db_session)
             member_emails = sync_res.get("member_emails", [])
             
