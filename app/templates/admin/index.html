@@ -110,6 +110,7 @@
                 <th>成员数</th>
                 <th>订阅计划</th>
                 <th>到期时间</th>
+                <th>设备验证</th>
                 <th>状态</th>
                 <th>操作</th>
             </tr>
@@ -139,6 +140,13 @@
                     {{ team.expires_at|format_datetime }}
                     {% else %}
                     -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if team.device_code_auth_enabled %}
+                    <span class="status-badge status-active">已开启</span>
+                    {% else %}
+                    <span class="status-badge status-banned">未开启</span>
                     {% endif %}
                 </td>
                 <td>
@@ -330,6 +338,10 @@
                 <div class="form-group">
                     <label>账号角色</label>
                     <input type="text" id="edit-team-role" class="form-control" readonly title="检测到的账号角色">
+                </div>
+                <div class="form-group">
+                    <label>设备代码身份验证</label>
+                    <input type="text" id="edit-team-device-auth" class="form-control" readonly title="检测到的验证开启状态">
                 </div>
                 <div class="form-group">
                     <label>最大成员数 <span class="required">*</span></label>
@@ -536,6 +548,7 @@
                 document.getElementById('edit-team-name').value = team.team_name || '';
                 document.getElementById('edit-team-status').value = team.status || 'active';
                 document.getElementById('edit-team-role').value = team.account_role || '未知';
+                document.getElementById('edit-team-device-auth').value = team.device_code_auth_enabled ? '已开启' : '未开启';
                 showModal('editTeamModal');
             } else {
                 showToast(data.error || '获取信息失败', 'error');

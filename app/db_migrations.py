@@ -101,6 +101,11 @@ def run_auto_migration():
             logger.info("添加 teams.account_role 字段")
             cursor.execute("ALTER TABLE teams ADD COLUMN account_role VARCHAR(50)")
             migrations_applied.append("teams.account_role")
+
+        if not column_exists(cursor, "teams", "device_code_auth_enabled"):
+            logger.info("添加 teams.device_code_auth_enabled 字段")
+            cursor.execute("ALTER TABLE teams ADD COLUMN device_code_auth_enabled BOOLEAN DEFAULT 0")
+            migrations_applied.append("teams.device_code_auth_enabled")
         
         # 提交更改
         conn.commit()

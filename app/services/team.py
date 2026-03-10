@@ -430,6 +430,18 @@ class TeamService:
                     except Exception as e:
                         logger.warning(f"解析过期时间失败: {e}")
 
+                # 获取账户设置 (包含 beta_settings)
+                device_code_auth_enabled = False
+                settings_result = await self.chatgpt_service.get_account_settings(
+                    access_token,
+                    selected_account["account_id"],
+                    db_session,
+                    identifier=email
+                )
+                if settings_result["success"]:
+                    beta_settings = settings_result["data"].get("beta_settings", {})
+                    device_code_auth_enabled = beta_settings.get("codex_device_code_auth", False)
+
                 # 确定状态和最大成员数 (默认 6)
                 max_members = 6
                 status = "active"
@@ -460,6 +472,7 @@ class TeamService:
                     max_members=max_members,
                     status=status,
                     account_role=selected_account.get("account_user_role"),
+                    device_code_auth_enabled=device_code_auth_enabled,
                     last_sync=get_now()
                 )
 
@@ -653,7 +666,8 @@ class TeamService:
                     "client_id": team.client_id or "",
                     "team_name": team.team_name,
                     "status": team.status,
-                    "account_role": team.account_role
+                    "account_role": team.account_role,
+                    "device_code_auth_enabled": team.device_code_auth_enabled
                 }
             }
         except Exception as e:
@@ -988,6 +1002,18 @@ class TeamService:
                 except Exception as e:
                     logger.warning(f"解析过期时间失败: {e}")
 
+            # 7.5 获取账户设置 (包含 beta_settings)
+            settings_result = await self.chatgpt_service.get_account_settings(
+                access_token,
+                current_account["account_id"],
+                db_session,
+                identifier=team.email
+            )
+            device_code_auth_enabled = team.device_code_auth_enabled
+            if settings_result["success"]:
+                beta_settings = settings_result["data"].get("beta_settings", {})
+                device_code_auth_enabled = beta_settings.get("codex_device_code_auth", False)
+
             # 7. 确定状态
             status = "active"
             if current_members >= team.max_members:
@@ -1004,6 +1030,7 @@ class TeamService:
             team.expires_at = expires_at
             team.current_members = current_members
             team.status = status
+            team.device_code_auth_enabled = device_code_auth_enabled
             team.error_count = 0  # 同步成功，重置错误次数
             team.last_sync = get_now()
 
@@ -1583,6 +1610,10 @@ class TeamService:
 
             if not result["success"]:
                 return {"success": False, "error": f"开启设备身份验证失败: {result.get('error', '未知错误')}"}
+
+            # 更新数据库状态
+            team.device_code_auth_enabled = True
+            await db_session.commit()
 
             logger.info(f"Team {team_id} ({team.email}) 开启设备身份验证成功")
             return {"success": True, "message": "设备代码身份验证开启成功"}

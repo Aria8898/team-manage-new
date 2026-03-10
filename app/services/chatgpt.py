@@ -315,6 +315,21 @@ class ChatGPTService:
                 })
         return {"success": True, "accounts": team_accounts, "error": None}
 
+    async def get_account_settings(
+        self,
+        access_token: str,
+        account_id: str,
+        db_session: DBAsyncSession,
+        identifier: str = "default"
+    ) -> Dict[str, Any]:
+        """获取账户设置信息 (包含 beta_settings)"""
+        url = f"{self.BASE_URL}/accounts/{account_id}/settings"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "chatgpt-account-id": account_id
+        }
+        return await self._make_request("GET", url, headers, db_session=db_session, identifier=identifier)
+
     async def refresh_access_token_with_session_token(
         self,
         session_token: str,
