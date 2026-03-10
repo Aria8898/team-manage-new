@@ -43,216 +43,244 @@
 <div class="content-section">
     <div class="section-header">
         <h3>Team 列表</h3>
-        <div class="header-group">
-            <form action="/admin" method="get" class="search-form">
-                <div class="input-group-clean">
-                    <i data-lucide="search" style="width: 14px; height: 14px;"></i>
-                    <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索邮箱/Account ID..."
-                        style="width: 200px;">
-                    {% if search %}
-                    <a href="/admin" title="清除搜索">
-                        <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
-                    </a>
-                    {% endif %}
-                </div>
-            </form>
-            <div class="dropdown-wrapper">
-                <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
-                    <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
-                </button>
-                <div id="columnToggleDropdown" class="dropdown-menu">
-                    <!-- Column checkboxes will be generated here -->
-                </div>
-            </div>
-            <button onclick="showModal('importTeamModal')" class="btn btn-primary">
-                <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
-            </button>
-        </div>
-    </div>
-
-    {% if teams %}
-    <div class="table-container">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>邮箱</th>
-                    <th>Account ID</th>
-                    <th>Team 名称</th>
-                    <th>成员数</th>
-                    <th>订阅计划</th>
-                    <th>到期时间</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for team in teams %}
-                <tr>
-                    <td><span class="text-muted">{{ team.id }}</span></td>
-                    <td>
-                        {{ team.email }}
-                        {% if team.account_role and team.account_role != 'account-owner' %}
-                        <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
-                        {% endif %}
-                    </td>
-                    <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
-                    <td>{{ team.team_name or '-' }}</td>
-                    <td>
-                        <span class="member-count">
-                            {{ team.current_members }}/{{ team.max_members }}
-                        </span>
-                    </td>
-                    <td>{{ team.subscription_plan or '-' }}</td>
-                    <td>
-                        {% if team.expires_at %}
-                        {{ team.expires_at|format_datetime }}
-                        {% else %}
-                        -
-                        {% endif %}
-                    </td>
-                    <td>
-                        <span class="status-badge status-{{ team.status }}">
-                            {% if team.status == 'active' %}
-                            可用
-                            {% elif team.status == 'full' %}
-                            已满
-                            {% elif team.status == 'expired' %}
-                            已过期
-                            {% elif team.status == 'banned' %}
-                            已封禁
-                            {% elif team.status == 'error' %}
-                            异常
-                            {% else %}
-                            未知
-                            {% endif %}
-                        </span>
-                    </td>
-                    <td>
-                        <div class="action-buttons">
-                            <button class="btn btn-sm btn-icon btn-minimal btn-info btn-view-members"
-                                data-id="{{ team.id }}" data-email="{{ team.email }}" title="查看成员">
-                                <i data-lucide="users" style="width: 16px; height: 16px;"></i>
-                            </button>
-                            <button class="btn btn-sm btn-icon btn-minimal btn-primary btn-edit-team"
-                                data-id="{{ team.id }}" title="编辑">
-                                <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
-                            </button>
-                            <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team"
-                                data-id="{{ team.id }}" title="刷新">
-                                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                            </button>
-                            <button class="btn btn-sm btn-icon btn-minimal btn-success btn-enable-device-auth"
-                                data-id="{{ team.id }}" title="一键开启设备代码验证">
-                                <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
-                            </button>
-                            <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team"
-                                data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
-                                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <!-- 分页 -->
-    <!-- 分页 -->
-    {% if pagination %}
-    <div class="pagination">
-        <div class="per-page-selector">
-            每页
-            <select class="per-page-select" onchange="changePerPage(this.value)">
-                <option value="20" {% if pagination.per_page==20 %}selected{% endif %}>20</option>
-                <option value="50" {% if pagination.per_page==50 %}selected{% endif %}>50</option>
-                <option value="100" {% if pagination.per_page==100 %}selected{% endif %}>100</option>
+        <div class="filter-group">
+            <select class="form-control-clean" onchange="filterByStatus(this.value)">
+                <option value="">所有状态</option>
+                <option value="active" {% if status_filter=='active' %}selected{% endif %}>可用 (Active)</option>
+                <option value="full" {% if status_filter=='full' %}selected{% endif %}>已满 (Full)</option>
+                <option value="expired" {% if status_filter=='expired' %}selected{% endif %}>已过期 (Expired)</option>
+                <option value="error" {% if status_filter=='error' %}selected{% endif %}>异常 (Error)</option>
+                <option value="banned" {% if status_filter=='banned' %}selected{% endif %}>已封禁 (Banned)</option>
             </select>
         </div>
 
-        {% if pagination.total_pages > 1 %}
-        {% set search_param = '&search=' + search|urlencode if search else '' %}
-        {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 20 else '' %}
-        {% set base_query = search_param + per_page_param %}
+        <div id="batchActions" class="batch-actions-group" style="display: none;">
+            <button onclick="handleBatchRefresh()" class="btn btn-secondary btn-sm">
+                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i> 批量刷新
+            </button>
+            <button onclick="handleBatchEnableDeviceAuth()" class="btn btn-success btn-sm">
+                <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i> 批量开启验证
+            </button>
+            <button onclick="handleBatchDelete()" class="btn btn-danger btn-sm">
+                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> 批量删除
+            </button>
+            <span class="selected-count text-muted small" style="margin-left: 8px;">已选 0 项</span>
+        </div>
 
-        <div class="pagination-controls">
-            <!-- 首页 -->
-            <a href="?page=1{{ base_query }}"
-                class="btn btn-sm btn-secondary {% if pagination.current_page == 1 %}disabled{% endif %}" title="首页">
-                <i data-lucide="chevrons-left" style="width: 14px; height: 14px;"></i>
-            </a>
+        <form action="/admin" method="get" class="search-form">
+            <div class="input-group-clean">
+                <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+                <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索邮箱/Account ID..."
+                    style="width: 200px;">
+                {% if search %}
+                <a href="/admin" title="清除搜索">
+                    <i data-lucide="x-circle" style="width: 14px; height: 14px;"></i>
+                </a>
+                {% endif %}
+                {% if status_filter %}
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                {% endif %}
+            </div>
+        </form>
+        <div class="dropdown-wrapper">
+            <button class="btn btn-secondary dropdown-toggle" onclick="toggleDropdown('columnToggleDropdown')">
+                <i data-lucide="columns" style="width: 16px; height: 16px;"></i> 列设置
+            </button>
+            <div id="columnToggleDropdown" class="dropdown-menu">
+                <!-- Column checkboxes will be generated here -->
+            </div>
+        </div>
+        <button onclick="showModal('importTeamModal')" class="btn btn-primary">
+            <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i> 导入 Team
+        </button>
+    </div>
+</div>
 
-            <!-- 上一页 -->
-            {% if pagination.current_page > 1 %}
-            <a href="?page={{ pagination.current_page - 1 }}{{ base_query }}" class="btn btn-sm btn-secondary"
-                title="上一页">
-                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+{% if teams %}
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width: 40px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)">
+                </th>
+                <th>ID</th>
+                <th>邮箱</th>
+                <th>Account ID</th>
+                <th>Team 名称</th>
+                <th>成员数</th>
+                <th>订阅计划</th>
+                <th>到期时间</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for team in teams %}
+            <tr>
+                <td><input type="checkbox" class="team-checkbox" value="{{ team.id }}" onchange="updateSelectedCount()">
+                </td>
+                <td><span class="text-muted">{{ team.id }}</span></td>
+                <td>
+                    {{ team.email }}
+                    {% if team.account_role and team.account_role != 'account-owner' %}
+                    <span class="role-hint" title="账号角色: {{ team.account_role }}">已降级</span>
+                    {% endif %}
+                </td>
+                <td><span class="text-muted small">{{ team.account_id or '-' }}</span></td>
+                <td>{{ team.team_name or '-' }}</td>
+                <td>
+                    <span class="member-count">
+                        {{ team.current_members }}/{{ team.max_members }}
+                    </span>
+                </td>
+                <td>{{ team.subscription_plan or '-' }}</td>
+                <td>
+                    {% if team.expires_at %}
+                    {{ team.expires_at|format_datetime }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="status-badge status-{{ team.status }}">
+                        {% if team.status == 'active' %}
+                        可用
+                        {% elif team.status == 'full' %}
+                        已满
+                        {% elif team.status == 'expired' %}
+                        已过期
+                        {% elif team.status == 'banned' %}
+                        已封禁
+                        {% elif team.status == 'error' %}
+                        异常
+                        {% else %}
+                        未知
+                        {% endif %}
+                    </span>
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-sm btn-icon btn-minimal btn-info btn-view-members"
+                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="查看成员">
+                            <i data-lucide="users" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-primary btn-edit-team"
+                            data-id="{{ team.id }}" title="编辑">
+                            <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-secondary btn-refresh-team"
+                            data-id="{{ team.id }}" title="刷新">
+                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-success btn-enable-device-auth"
+                            data-id="{{ team.id }}" title="一键开启设备代码验证">
+                            <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button class="btn btn-sm btn-icon btn-minimal btn-danger btn-delete-team"
+                            data-id="{{ team.id }}" data-email="{{ team.email }}" title="删除">
+                            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 分页 -->
+<!-- 分页 -->
+{% if pagination %}
+<div class="pagination">
+    <div class="per-page-selector">
+        每页
+        <select class="per-page-select" onchange="changePerPage(this.value)">
+            <option value="20" {% if pagination.per_page==20 %}selected{% endif %}>20</option>
+            <option value="50" {% if pagination.per_page==50 %}selected{% endif %}>50</option>
+            <option value="100" {% if pagination.per_page==100 %}selected{% endif %}>100</option>
+        </select>
+    </div>
+
+    {% if pagination.total_pages > 1 %}
+    {% set search_param = '&search=' + search|urlencode if search else '' %}
+    {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 20 else '' %}
+    {% set base_query = search_param + per_page_param %}
+
+    <div class="pagination-controls">
+        <!-- 首页 -->
+        <a href="?page=1{{ base_query }}"
+            class="btn btn-sm btn-secondary {% if pagination.current_page == 1 %}disabled{% endif %}" title="首页">
+            <i data-lucide="chevrons-left" style="width: 14px; height: 14px;"></i>
+        </a>
+
+        <!-- 上一页 -->
+        {% if pagination.current_page > 1 %}
+        <a href="?page={{ pagination.current_page - 1 }}{{ base_query }}" class="btn btn-sm btn-secondary" title="上一页">
+            <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+        </a>
+        {% else %}
+        <button class="btn btn-sm btn-secondary" disabled>
+            <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+        </button>
+        {% endif %}
+
+        <!-- 页码 -->
+        <div class="pagination-numbers">
+            {% set start_page = pagination.current_page - 2 %}
+            {% set end_page = pagination.current_page + 2 %}
+
+            {% if start_page < 1 %} {% set end_page=end_page + (1 - start_page) %} {% set start_page=1 %} {% endif %} {%
+                if end_page> pagination.total_pages %}
+                {% set start_page = start_page - (end_page - pagination.total_pages) %}
+                {% set end_page = pagination.total_pages %}
+                {% if start_page < 1 %} {% set start_page=1 %} {% endif %} {% endif %} {% if start_page> 1 %}
+                    <a href="?page=1{{ base_query }}" class="page-number">1</a>
+                    {% if start_page > 2 %}
+                    <span class="page-dots">...</span>
+                    {% endif %}
+                    {% endif %}
+
+                    {% for p in range(start_page, end_page + 1) %}
+                    <a href="?page={{ p }}{{ base_query }}"
+                        class="page-number {% if p == pagination.current_page %}active{% endif %}">{{ p }}</a>
+                    {% endfor %}
+
+                    {% if end_page < pagination.total_pages %} {% if end_page < pagination.total_pages - 1 %} <span
+                        class="page-dots">...</span>
+                        {% endif %}
+                        <a href="?page={{ pagination.total_pages }}{{ base_query }}" class="page-number">{{
+                            pagination.total_pages }}</a>
+                        {% endif %}
+        </div>
+
+        <!-- 下一页 -->
+        {% if pagination.current_page < pagination.total_pages %} <a
+            href="?page={{ pagination.current_page + 1 }}{{ base_query }}" class="btn btn-sm btn-secondary" title="下一页">
+            <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
             </a>
             {% else %}
             <button class="btn btn-sm btn-secondary" disabled>
-                <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
+                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
             </button>
             {% endif %}
 
-            <!-- 页码 -->
-            <div class="pagination-numbers">
-                {% set start_page = pagination.current_page - 2 %}
-                {% set end_page = pagination.current_page + 2 %}
-
-                {% if start_page < 1 %} {% set end_page=end_page + (1 - start_page) %} {% set start_page=1 %} {% endif
-                    %} {% if end_page> pagination.total_pages %}
-                    {% set start_page = start_page - (end_page - pagination.total_pages) %}
-                    {% set end_page = pagination.total_pages %}
-                    {% if start_page < 1 %} {% set start_page=1 %} {% endif %} {% endif %} {% if start_page> 1 %}
-                        <a href="?page=1{{ base_query }}" class="page-number">1</a>
-                        {% if start_page > 2 %}
-                        <span class="page-dots">...</span>
-                        {% endif %}
-                        {% endif %}
-
-                        {% for p in range(start_page, end_page + 1) %}
-                        <a href="?page={{ p }}{{ base_query }}"
-                            class="page-number {% if p == pagination.current_page %}active{% endif %}">{{ p }}</a>
-                        {% endfor %}
-
-                        {% if end_page < pagination.total_pages %} {% if end_page < pagination.total_pages - 1 %} <span
-                            class="page-dots">...</span>
-                            {% endif %}
-                            <a href="?page={{ pagination.total_pages }}{{ base_query }}" class="page-number">{{
-                                pagination.total_pages }}</a>
-                            {% endif %}
-            </div>
-
-            <!-- 下一页 -->
-            {% if pagination.current_page < pagination.total_pages %} <a
-                href="?page={{ pagination.current_page + 1 }}{{ base_query }}" class="btn btn-sm btn-secondary"
-                title="下一页">
-                <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
-                </a>
-                {% else %}
-                <button class="btn btn-sm btn-secondary" disabled>
-                    <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
-                </button>
-                {% endif %}
-
-                <!-- 末页 -->
-                <a href="?page={{ pagination.total_pages }}{{ base_query }}"
-                    class="btn btn-sm btn-secondary {% if pagination.current_page == pagination.total_pages %}disabled{% endif %}"
-                    title="末页">
-                    <i data-lucide="chevrons-right" style="width: 14px; height: 14px;"></i>
-                </a>
-        </div>
-        <span class="pagination-info" style="margin-left: 1rem;">共 {{ pagination.total }} 条</span>
-        {% endif %}
+            <!-- 末页 -->
+            <a href="?page={{ pagination.total_pages }}{{ base_query }}"
+                class="btn btn-sm btn-secondary {% if pagination.current_page == pagination.total_pages %}disabled{% endif %}"
+                title="末页">
+                <i data-lucide="chevrons-right" style="width: 14px; height: 14px;"></i>
+            </a>
     </div>
+    <span class="pagination-info" style="margin-left: 1rem;">共 {{ pagination.total }} 条</span>
     {% endif %}
-    {% else %}
-    <div class="empty-state">
-        <p>暂无 Team 数据</p>
-        <button onclick="showModal('importTeamModal')" class="btn btn-primary">立即导入</button>
-    </div>
-    {% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty-state">
+    <p>暂无 Team 数据</p>
+    <button onclick="showModal('importTeamModal')" class="btn btn-primary">立即导入</button>
+</div>
+{% endif %}
 </div>
 
 <!-- 编辑 Team 模态框 -->
@@ -624,6 +652,97 @@
             document.querySelectorAll('.dropdown-menu').forEach(d => d.classList.remove('show'));
         }
     });
+
+    function filterByStatus(status) {
+        const url = new URL(window.location.href);
+        if (status) {
+            url.searchParams.set('status', status);
+        } else {
+            url.searchParams.delete('status');
+        }
+        url.searchParams.set('page', 1);
+        window.location.href = url.toString();
+    }
+
+    function toggleSelectAll(checked) {
+        document.querySelectorAll('.team-checkbox').forEach(cb => {
+            cb.checked = checked;
+        });
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        const checkboxes = document.querySelectorAll('.team-checkbox');
+        const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        const totalCount = checkboxes.length;
+
+        const batchActions = document.getElementById('batchActions');
+        const countSpan = batchActions.querySelector('.selected-count');
+        const selectAll = document.getElementById('selectAll');
+
+        if (selectedCount > 0) {
+            batchActions.style.display = 'flex';
+            batchActions.style.alignItems = 'center';
+            countSpan.innerText = `已选 ${selectedCount} 项`;
+        } else {
+            batchActions.style.display = 'none';
+        }
+
+        // Update Select All state
+        if (selectAll) {
+            selectAll.checked = selectedCount === totalCount && totalCount > 0;
+            selectAll.indeterminate = selectedCount > 0 && selectedCount < totalCount;
+        }
+    }
+
+    async function handleBatchAction(endpoint, actionName) {
+        const selectedIds = Array.from(document.querySelectorAll('.team-checkbox:checked'))
+            .map(cb => parseInt(cb.value));
+
+        if (selectedIds.length === 0) {
+            showToast('请选择要操作的 Team', 'warning');
+            return;
+        }
+
+        if (!confirm(`确定要对选中的 ${selectedIds.length} 个 Team 进行 "${actionName}" 操作吗？`)) {
+            return;
+        }
+
+        try {
+            showToast(`正在${actionName}...`, 'info');
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ids: selectedIds })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                showToast(result.message || `${actionName}成功`, 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showToast(result.error || `${actionName}失败`, 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            showToast('网络错误', 'error');
+        }
+    }
+
+    function handleBatchRefresh() {
+        handleBatchAction('/admin/teams/batch-refresh', '批量刷新');
+    }
+
+    function handleBatchDelete() {
+        handleBatchAction('/admin/teams/batch-delete', '批量删除');
+    }
+
+    function handleBatchEnableDeviceAuth() {
+        handleBatchAction('/admin/teams/batch-enable-device-auth', '批量开启验证');
+    }
 
     function changePerPage(val) {
         const url = new URL(window.location.href);

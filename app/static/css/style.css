@@ -431,6 +431,34 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
+/* Batch Actions */
+.batch-actions-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: var(--primary-soft);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--primary);
+    animation: fadeIn var(--transition-fast) forwards;
+}
+
+.form-control-clean {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-base);
+    border-radius: var(--radius-md);
+    background-color: var(--bg-surface);
+    color: var(--text-main);
+    font-size: 0.875rem;
+    outline: none;
+    transition: var(--transition-fast);
+}
+
+.form-control-clean:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
 /* Tables */
 .table-container {
     width: 100%;

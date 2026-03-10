@@ -1772,7 +1772,8 @@ class TeamService:
         db_session: AsyncSession,
         page: int = 1,
         per_page: int = 20,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        status: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取所有 Team 列表 (用于管理员页面)
@@ -1782,6 +1783,7 @@ class TeamService:
             page: 页码
             per_page: 每页数量
             search: 搜索关键词
+            status: 状态过滤 (可选)
 
         Returns:
             结果字典,包含 success, teams, total, total_pages, current_page, error
@@ -1803,7 +1805,11 @@ class TeamService:
                     )
                 )
 
-            # 3. 获取总数
+            # 3. 如果有状态过滤,添加过滤条件
+            if status:
+                stmt = stmt.where(Team.status == status)
+
+            # 4. 获取总数
             count_stmt = select(func.count()).select_from(stmt.subquery())
             count_result = await db_session.execute(count_stmt)
             total = count_result.scalar() or 0

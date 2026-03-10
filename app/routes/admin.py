@@ -84,12 +84,18 @@ class BulkCodeUpdateRequest(BaseModel):
     warranty_days: Optional[int] = Field(None, description="质保天数")
 
 
+class BulkActionRequest(BaseModel):
+    """批量操作请求"""
+    ids: List[int] = Field(..., description="Team ID 列表")
+
+
 @router.get("/", response_class=HTMLResponse)
 async def admin_dashboard(
     request: Request,
     page: int = 1,
     per_page: int = 20,
     search: Optional[str] = None,
+    status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -104,7 +110,7 @@ async def admin_dashboard(
         # per_page = 20 (Removed hardcoded value)
         
         # 获取 Team 列表 (分页)
-        teams_result = await team_service.get_all_teams(db, page=page, per_page=per_page, search=search)
+        teams_result = await team_service.get_all_teams(db, page=page, per_page=per_page, search=search, status=status)
         
         # 获取统计信息 (使用专用统计方法优化)
         team_stats = await team_service.get_stats(db)
@@ -127,6 +133,7 @@ async def admin_dashboard(
                 "teams": teams_result.get("teams", []),
                 "stats": stats,
                 "search": search,
+                "status_filter": status,
                 "pagination": {
                     "current_page": teams_result.get("current_page", page),
                     "total_pages": teams_result.get("total_pages", 1),
@@ -545,6 +552,130 @@ async def enable_team_device_auth(
                 "success": False,
                 "error": f"操作失败: {str(e)}"
             }
+        )
+
+
+# ==================== 批量操作路由 ====================
+
+@router.post("/teams/batch-refresh")
+async def batch_refresh_teams(
+    action_data: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    批量刷新 Team 信息
+    """
+    try:
+        logger.info(f"管理员批量刷新 {len(action_data.ids)} 个 Team")
+        
+        success_count = 0
+        failed_count = 0
+        
+        for team_id in action_data.ids:
+            try:
+                # 注意: 这里使用 sync_team_info, 它会自动处理 Token 刷新和信息同步
+                # force_refresh=True 代表强制同步 API
+                result = await team_service.sync_team_info(team_id, db, force_refresh=True)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    failed_count += 1
+            except Exception as ex:
+                logger.error(f"批量刷新 Team {team_id} 时出错: {ex}")
+                failed_count += 1
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"批量刷新完成: 成功 {success_count}, 失败 {failed_count}",
+            "success_count": success_count,
+            "failed_count": failed_count
+        })
+    except Exception as e:
+        logger.error(f"批量刷新 Team 失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/teams/batch-delete")
+async def batch_delete_teams(
+    action_data: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    批量删除 Team
+    """
+    try:
+        logger.info(f"管理员批量删除 {len(action_data.ids)} 个 Team")
+        
+        success_count = 0
+        failed_count = 0
+        
+        for team_id in action_data.ids:
+            try:
+                result = await team_service.delete_team(team_id, db)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    failed_count += 1
+            except Exception as ex:
+                logger.error(f"批量删除 Team {team_id} 时出错: {ex}")
+                failed_count += 1
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"批量删除完成: 成功 {success_count}, 失败 {failed_count}",
+            "success_count": success_count,
+            "failed_count": failed_count
+        })
+    except Exception as e:
+        logger.error(f"批量删除 Team 失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/teams/batch-enable-device-auth")
+async def batch_enable_device_auth(
+    action_data: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """
+    批量开启设备代码身份验证
+    """
+    try:
+        logger.info(f"管理员批量开启 {len(action_data.ids)} 个 Team 的设备验证")
+        
+        success_count = 0
+        failed_count = 0
+        
+        for team_id in action_data.ids:
+            try:
+                result = await team_service.enable_device_code_auth(team_id, db)
+                if result.get("success"):
+                    success_count += 1
+                else:
+                    failed_count += 1
+            except Exception as ex:
+                logger.error(f"批量开启 Team {team_id} 设备验证时出错: {ex}")
+                failed_count += 1
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"批量处理完成: 成功 {success_count}, 失败 {failed_count}",
+            "success_count": success_count,
+            "failed_count": failed_count
+        })
+    except Exception as e:
+        logger.error(f"批量处理失败: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
         )
 
 
