@@ -10,6 +10,11 @@ from app.database import get_db
 
 logger = logging.getLogger(__name__)
 
+THEME_TEMPLATE_MAP = {
+    "theme_a": "user/redeem_a.html",
+    "theme_b": "user/redeem_b.html",
+}
+
 # 创建路由器
 router = APIRouter(
     tags=["user"]
@@ -34,14 +39,26 @@ async def redeem_page(
     try:
         from app.main import templates
         from app.services.team import TeamService
-        
+
+        # 优先读 Caddy 注入的 header，本地调试可用 ?theme=xxx 替代
+        theme = (
+            request.headers.get("x-site-theme")
+            or request.query_params.get("theme")
+        )
+        if theme not in THEME_TEMPLATE_MAP:
+            if theme:
+                logger.warning(f"未知 theme 值: '{theme}'，host: {request.headers.get('host')}，fallback 到原始页面")
+            template_name = "user/redeem.html"
+        else:
+            template_name = THEME_TEMPLATE_MAP[theme]
+
         team_service = TeamService()
         remaining_spots = await team_service.get_total_available_seats(db)
 
-        logger.info(f"用户访问兑换页面，剩余车位: {remaining_spots}")
+        logger.info(f"用户访问兑换页面，theme: {theme or 'default'}，剩余车位: {remaining_spots}")
 
         return templates.TemplateResponse(
-            "user/redeem.html",
+            template_name,
             {
                 "request": request,
                 "remaining_spots": remaining_spots
