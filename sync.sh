@@ -32,7 +32,7 @@ git fetch upstream
 echo ""
 echo "🔄 Step 3: 合并 upstream/$UPSTREAM_BRANCH 到本地 $LOCAL_UPSTREAM_BRANCH"
 
-git merge "upstream/$UPSTREAM_BRANCH" --no-edit
+git merge "upstream/$UPSTREAM_BRANCH" --no-edit --allow-unrelated-histories
 
 echo ""
 echo "📤 Step 4: 推送更新到你的远程仓库"
