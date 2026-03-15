@@ -56,7 +56,7 @@
                     id="filter-expired">已过期</button>
             </div>
 
-            <form action="/admin/codes" method="get" class="search-form">
+            <form action="/admin/codes" method="get" class="search-form" style="display: flex; gap: 0.5rem; align-items: center;">
                 <div class="input-group-clean">
                     <i data-lucide="search" style="width: 14px; height: 14px;"></i>
                     <input type="text" name="search" value="{{ search or '' }}" placeholder="搜索兑换码..."
@@ -67,6 +67,14 @@
                     </a>
                     {% endif %}
                 </div>
+                {% if status_filter %}<input type="hidden" name="status_filter" value="{{ status_filter }}">{% endif %}
+                <select name="channel_filter" class="form-control" style="width: auto; height: 32px; padding: 0 0.5rem; font-size: 0.875rem;" onchange="this.form.submit()">
+                    <option value="">全部渠道</option>
+                    {% for ch in channels %}
+                    <option value="{{ ch.value }}" {% if channel_filter == ch.value %}selected{% endif %}>{{ ch.label }}</option>
+                    {% endfor %}
+                    <option value="__unset__" {% if channel_filter == '__unset__' %}selected{% endif %}>未分类</option>
+                </select>
             </form>
         </div>
 
@@ -101,6 +109,7 @@
                             style="width: auto; margin: 0;">
                     </th>
                     <th>兑换码</th>
+                    <th>渠道</th>
                     <th>状态</th>
                     <th>创建时间</th>
                     <th>过期时间</th>
@@ -124,6 +133,7 @@
                             <code>{{ code.code }}</code>
                         </div>
                     </td>
+                    <td>{{ code.channel_label }}</td>
                     <td>
                         {% if code.status == 'unused' %}
                         <span class="status-badge status-active">未使用</span>
@@ -208,7 +218,8 @@
         {% set search_param = '&search=' + search|urlencode if search else '' %}
         {% set status_param = '&status_filter=' + status_filter|urlencode if status_filter else '' %}
         {% set per_page_param = '&per_page=' + pagination.per_page|string if pagination.per_page != 50 else '' %}
-        {% set base_query = search_param + status_param + per_page_param %}
+        {% set channel_param = '&channel_filter=' + channel_filter|urlencode if channel_filter else '' %}
+        {% set base_query = search_param + status_param + per_page_param + channel_param %}
 
         <div class="pagination-controls">
             <!-- 首页 -->

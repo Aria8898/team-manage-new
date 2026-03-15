@@ -79,6 +79,7 @@ class RedemptionCode(Base):
     has_warranty = Column(Boolean, default=False, comment="是否为质保兑换码")
     warranty_days = Column(Integer, default=30, comment="质保时长(天)")
     warranty_expires_at = Column(DateTime, comment="质保到期时间(首次使用后根据质保时长计算)")
+    channel = Column(String(32), nullable=True, comment="渠道: xianyu/siyou/faka/ldo/ziyong/hezuoshang")
 
     # 关系
     redemption_records = relationship("RedemptionRecord", back_populates="redemption_code")

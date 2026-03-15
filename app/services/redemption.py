@@ -53,7 +53,8 @@ class RedemptionService:
         code: Optional[str] = None,
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
-        warranty_days: int = 30
+        warranty_days: int = 30,
+        channel: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         生成单个兑换码
@@ -114,7 +115,8 @@ class RedemptionService:
                 status="unused",
                 expires_at=expires_at,
                 has_warranty=has_warranty,
-                warranty_days=warranty_days
+                warranty_days=warranty_days,
+                channel=channel
             )
 
             db_session.add(redemption_code)
@@ -145,7 +147,8 @@ class RedemptionService:
         count: int,
         expires_days: Optional[int] = None,
         has_warranty: bool = False,
-        warranty_days: int = 30
+        warranty_days: int = 30,
+        channel: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         批量生成兑换码
@@ -202,7 +205,8 @@ class RedemptionService:
                     status="unused",
                     expires_at=expires_at,
                     has_warranty=has_warranty,
-                    warranty_days=warranty_days
+                    warranty_days=warranty_days,
+                    channel=channel
                 )
                 db_session.add(redemption_code)
 
@@ -399,7 +403,8 @@ class RedemptionService:
         page: int = 1,
         per_page: int = 50,
         search: Optional[str] = None,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        channel: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取所有兑换码
@@ -433,7 +438,13 @@ class RedemptionService:
                     filters.append(RedemptionCode.status.in_(['used', 'warranty_active']))
                 else:
                     filters.append(RedemptionCode.status == status)
-            
+
+            if channel is not None:
+                if channel == '__unset__':
+                    filters.append(RedemptionCode.channel.is_(None))
+                else:
+                    filters.append(RedemptionCode.channel == channel)
+
             if filters:
                 count_stmt = count_stmt.where(and_(*filters))
                 stmt = stmt.where(and_(*filters))
@@ -471,7 +482,8 @@ class RedemptionService:
                     "used_at": code.used_at.isoformat() if code.used_at else None,
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
-                    "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None
+                    "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None,
+                    "channel": code.channel
                 })
 
             logger.info(f"获取所有兑换码成功: 第 {page} 页, 共 {len(code_list)} 个 / 总数 {total}")

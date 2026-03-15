@@ -106,7 +106,13 @@ def run_auto_migration():
             logger.info("添加 teams.device_code_auth_enabled 字段")
             cursor.execute("ALTER TABLE teams ADD COLUMN device_code_auth_enabled BOOLEAN DEFAULT 0")
             migrations_applied.append("teams.device_code_auth_enabled")
-        
+
+        # 检查并添加兑换码渠道字段
+        if not column_exists(cursor, "redemption_codes", "channel"):
+            logger.info("添加 redemption_codes.channel 字段")
+            cursor.execute("ALTER TABLE redemption_codes ADD COLUMN channel VARCHAR(32)")
+            migrations_applied.append("redemption_codes.channel")
+
         # 提交更改
         conn.commit()
         

@@ -205,6 +205,18 @@
                 <div id="singleGenerate" class="card-body">
                     <form onsubmit="generateSingle(event)">
                         <div class="form-group">
+                            <label>渠道 (可选)</label>
+                            <select name="channel" class="form-control" id="single-channel-select">
+                                <option value="">不指定渠道</option>
+                                <option value="xianyu">闲鱼</option>
+                                <option value="siyou">私域</option>
+                                <option value="faka">发卡</option>
+                                <option value="ldo">LDO</option>
+                                <option value="ziyong">自用</option>
+                                <option value="hezuoshang">合作商</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label>自定义兑换码 (可选)</label>
                             <input type="text" name="customCode" class="form-control" placeholder="留空则自动生成"
                                 maxlength="32">
@@ -239,6 +251,18 @@
 
                 <div id="batchGenerate" class="card-body" style="display: none;">
                     <form onsubmit="generateBatch(event)">
+                        <div class="form-group">
+                            <label>渠道 (可选)</label>
+                            <select name="channel" class="form-control" id="batch-channel-select">
+                                <option value="">不指定渠道</option>
+                                <option value="xianyu">闲鱼</option>
+                                <option value="siyou">私域</option>
+                                <option value="faka">发卡</option>
+                                <option value="ldo">LDO</option>
+                                <option value="ziyong">自用</option>
+                                <option value="hezuoshang">合作商</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label>生成数量 *</label>
                             <input type="number" name="count" class="form-control" placeholder="请输入生成数量" min="1"

@@ -57,6 +57,7 @@ class CodeGenerateRequest(BaseModel):
     expires_days: Optional[int] = Field(None, description="有效期天数")
     has_warranty: bool = Field(False, description="是否为质保兑换码")
     warranty_days: int = Field(30, description="质保天数")
+    channel: Optional[str] = Field(None, description="渠道")
 
 
 class TeamUpdateRequest(BaseModel):
@@ -681,6 +682,13 @@ async def batch_enable_device_auth(
 
 # ==================== 兑换码管理路由 ====================
 
+@router.get("/codes/channels")
+async def get_channels(current_user: dict = Depends(require_admin)):
+    """获取渠道列表"""
+    from app.constants import REDEMPTION_CHANNELS
+    return JSONResponse(content={"success": True, "channels": REDEMPTION_CHANNELS})
+
+
 @router.get("/codes", response_class=HTMLResponse)
 async def codes_list_page(
     request: Request,
@@ -688,6 +696,7 @@ async def codes_list_page(
     per_page: int = 50,
     search: Optional[str] = None,
     status_filter: Optional[str] = None,
+    channel_filter: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_admin)
 ):
@@ -709,12 +718,14 @@ async def codes_list_page(
     try:
         from app.main import templates
 
-        logger.info(f"管理员访问兑换码列表页面, search={search}, status={status_filter}, per_page={per_page}")
+        logger.info(f"管理员访问兑换码列表页面, search={search}, status={status_filter}, channel={channel_filter}, per_page={per_page}")
+
+        from app.constants import REDEMPTION_CHANNELS, CHANNEL_LABEL_MAP
 
         # 获取兑换码 (分页)
         # per_page = 50 (Removed hardcoded value)
         codes_result = await redemption_service.get_all_codes(
-            db, page=page, per_page=per_page, search=search, status=status_filter
+            db, page=page, per_page=per_page, search=search, status=status_filter, channel=channel_filter
         )
         codes = codes_result.get("codes", [])
         total_codes = codes_result.get("total", 0)
@@ -726,7 +737,7 @@ async def codes_list_page(
         # 兼容旧模版中的 status 统计名 (unused/used/expired)
         # 注意: get_stats 返回的 used 已经包含了 warranty_active
 
-        # 格式化日期时间
+        # 格式化日期时间，并补充渠道 label
         from datetime import datetime
         for code in codes:
             if code.get("created_at"):
@@ -738,6 +749,7 @@ async def codes_list_page(
             if code.get("used_at"):
                 dt = datetime.fromisoformat(code["used_at"])
                 code["used_at"] = dt.strftime("%Y-%m-%d %H:%M")
+            code["channel_label"] = CHANNEL_LABEL_MAP.get(code.get("channel"), "—")
 
         return templates.TemplateResponse(
             "admin/codes/index.html",
@@ -749,6 +761,8 @@ async def codes_list_page(
                 "stats": stats,
                 "search": search,
                 "status_filter": status_filter,
+                "channel_filter": channel_filter,
+                "channels": REDEMPTION_CHANNELS,
                 "pagination": {
                     "current_page": current_page,
                     "total_pages": total_pages,
@@ -795,7 +809,8 @@ async def generate_codes(
                 code=generate_data.code,
                 expires_days=generate_data.expires_days,
                 has_warranty=generate_data.has_warranty,
-                warranty_days=generate_data.warranty_days
+                warranty_days=generate_data.warranty_days,
+                channel=generate_data.channel
             )
 
             if not result["success"]:
@@ -822,7 +837,8 @@ async def generate_codes(
                 count=generate_data.count,
                 expires_days=generate_data.expires_days,
                 has_warranty=generate_data.has_warranty,
-                warranty_days=generate_data.warranty_days
+                warranty_days=generate_data.warranty_days,
+                channel=generate_data.channel
             )
 
             if not result["success"]:

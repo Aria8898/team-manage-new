@@ -346,6 +346,7 @@ async function generateSingle(event) {
     const expiresDays = form.expiresDays.value;
     const hasWarranty = form.hasWarranty.checked;
     const warrantyDays = form.warrantyDays ? form.warrantyDays.value : 30;
+    const channel = form.channel ? form.channel.value : '';
 
     const data = {
         type: 'single',
@@ -354,6 +355,7 @@ async function generateSingle(event) {
     };
     if (customCode) data.code = customCode;
     if (expiresDays) data.expires_days = parseInt(expiresDays);
+    if (channel) data.channel = channel;
 
     const result = await apiCall('/admin/codes/generate', {
         method: 'POST',
@@ -381,6 +383,7 @@ async function generateBatch(event) {
     const expiresDays = form.expiresDays.value;
     const hasWarranty = form.hasWarranty.checked;
     const warrantyDays = form.warrantyDays ? form.warrantyDays.value : 30;
+    const channel = form.channel ? form.channel.value : '';
 
     if (count < 1 || count > 1000) {
         showToast('生成数量必须在1-1000之间', 'error');
@@ -394,6 +397,7 @@ async function generateBatch(event) {
         warranty_days: parseInt(warrantyDays || 30)
     };
     if (expiresDays) data.expires_days = parseInt(expiresDays);
+    if (channel) data.channel = channel;
 
     const result = await apiCall('/admin/codes/generate', {
         method: 'POST',
