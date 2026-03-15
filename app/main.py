@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -82,13 +83,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     )
 
 # 配置 Session 中间件
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
     session_cookie="session",
     max_age=14 * 24 * 60 * 60,  # 14 天
     same_site="lax",
-    https_only=False  # 开发环境设为 False，生产环境应设为 True
+    https_only=True
 )
 
 # 配置静态文件
