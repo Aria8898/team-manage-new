@@ -364,10 +364,10 @@
             <button class="modal-close" onclick="hideModal('copyDistributeModal')">&times;</button>
         </div>
         <div class="modal-body">
-            <p style="margin-bottom: 1rem; color: var(--text-muted);">是否将兑换码 <code id="copy-distribute-code"></code> 标记为「已分发」？</p>
+            <p id="copy-distribute-msg" style="margin-bottom: 1rem; color: var(--text-muted);"></p>
             <div style="display: flex; gap: 0.5rem;">
                 <button onclick="confirmMarkDistributed()" class="btn btn-warning">标记已分发</button>
-                <button onclick="hideModal('copyDistributeModal')" class="btn btn-secondary">跳过</button>
+                <button onclick="hideModal('copyDistributeModal'); location.reload();" class="btn btn-secondary">跳过</button>
             </div>
         </div>
     </div>
@@ -480,6 +480,16 @@
     .btn-warning:hover {
         background: #d97706;
     }
+
+    /* 确保 toast 始终显示在模态框上方 */
+    #toast {
+        z-index: 1100 !important;
+    }
+
+    /* 复制分发确认框不需要背景模糊，避免遮挡 toast */
+    #copyDistributeModal {
+        backdrop-filter: none !important;
+    }
 </style>
 {% endblock %}
 
@@ -488,6 +498,15 @@
     document.addEventListener('DOMContentLoaded', () => {
         // Init Column Toggler
         initColumnToggler('.data-table', 'codes_list_columns');
+
+        // 关闭生成兑换码弹窗时，清空上次生成的结果，避免复制到旧兑换码
+        const generateModalCloseBtn = document.querySelector('#generateCodeModal .modal-close');
+        if (generateModalCloseBtn) {
+            generateModalCloseBtn.addEventListener('click', () => {
+                document.getElementById('singleResult').style.display = 'none';
+                document.getElementById('generatedCode').textContent = '';
+            });
+        }
     });
 
     // Column Toggler Logic & Pagination
@@ -823,36 +842,91 @@
     }
 
     // 覆盖全局 copyCode，复制后弹出确认框
-    function copyCode(code) {
+    async function copyCode(code) {
+        let fromGenerateModal = false;
+        if (!code) {
+            const generatedCodeEl = document.getElementById('generatedCode');
+            code = generatedCodeEl ? generatedCodeEl.textContent.trim() : '';
+            fromGenerateModal = true;
+        }
         if (!code) return;
-        copyToClipboard(code);
-        _pendingDistributeCode = code;
-        document.getElementById('copy-distribute-code').textContent = code;
-        showModal('copyDistributeModal');
+        const success = await copyToClipboard(code);
+        if (!success) return;
+        if (fromGenerateModal) {
+            hideModal('generateCodeModal');
+            document.getElementById('singleResult').style.display = 'none';
+            document.getElementById('generatedCode').textContent = '';
+        }
+        // 等复制成功 toast 显示后，再弹出分发确认框
+        setTimeout(() => {
+            _pendingDistributeCode = code;
+            _pendingBatchCodes = null;
+            document.getElementById('copy-distribute-msg').innerHTML =
+                `是否将兑换码 <code>${code}</code> 标记为「已分发」？`;
+            showModal('copyDistributeModal');
+        }, 300);
     }
 
     // 复制后确认是否标记已分发
     let _pendingDistributeCode = null;
+    let _pendingBatchCodes = null;
 
     async function confirmMarkDistributed() {
-        if (!_pendingDistributeCode) return;
         hideModal('copyDistributeModal');
         try {
-            const response = await fetch(`/admin/codes/${encodeURIComponent(_pendingDistributeCode)}/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ has_warranty: false, status: 'distributed' })
-            });
-            const result = await response.json();
-            if (response.ok && result.success) {
-                showToast('已标记为已分发', 'success');
-                setTimeout(() => window.location.reload(), 1000);
-            } else {
-                showToast(result.error || '标记失败', 'error');
+            if (_pendingBatchCodes && _pendingBatchCodes.length > 0) {
+                // 批量标记
+                const response = await fetch('/admin/codes/bulk-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ codes: _pendingBatchCodes, has_warranty: false, status: 'distributed' })
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    showToast(`已将 ${_pendingBatchCodes.length} 个兑换码标记为已分发`, 'success');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast(result.error || '标记失败', 'error');
+                }
+            } else if (_pendingDistributeCode) {
+                // 单个标记
+                const response = await fetch(`/admin/codes/${encodeURIComponent(_pendingDistributeCode)}/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ has_warranty: false, status: 'distributed' })
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    showToast('已标记为已分发', 'success');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast(result.error || '标记失败', 'error');
+                }
             }
         } catch (error) {
             showToast('网络错误', 'error');
+        } finally {
+            _pendingDistributeCode = null;
+            _pendingBatchCodes = null;
         }
+    }
+
+    // 覆盖全局 copyBatchCodes，复制后弹出确认框
+    async function copyBatchCodes() {
+        const codesEl = document.getElementById('batchCodes');
+        const codesText = codesEl ? codesEl.value.trim() : '';
+        if (!codesText) return;
+        const success = await copyToClipboard(codesText);
+        if (!success) return;
+        const codes = codesText.split('\n').map(c => c.trim()).filter(Boolean);
+        hideModal('generateCodeModal');
+        setTimeout(() => {
+            _pendingDistributeCode = null;
+            _pendingBatchCodes = codes;
+            document.getElementById('copy-distribute-msg').innerHTML =
+                `是否将 <strong>${codes.length}</strong> 个兑换码标记为「已分发」？`;
+            showModal('copyDistributeModal');
+        }, 300);
     }
 
     // 批量标记已分发

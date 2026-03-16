@@ -368,9 +368,9 @@ async function generateSingle(event) {
         form.reset();
         showToast('兑换码生成成功', 'success');
         // 如果在列表中，延迟刷新
-        if (window.location.pathname === '/admin/codes') {
-            setTimeout(() => location.reload(), 2000);
-        }
+        // if (window.location.pathname === '/admin/codes') {
+        //     setTimeout(() => location.reload(), 2000);
+        // }
     } else {
         showToast(result.error || '生成失败', 'error');
     }
@@ -410,9 +410,9 @@ async function generateBatch(event) {
         document.getElementById('batchResult').style.display = 'block';
         form.reset();
         showToast(`成功生成 ${result.data.total} 个兑换码`, 'success');
-        if (window.location.pathname === '/admin/codes') {
-            setTimeout(() => location.reload(), 3000);
-        }
+        // if (window.location.pathname === '/admin/codes') {
+        //     setTimeout(() => location.reload(), 3000);
+        // }
     } else {
         showToast(result.error || '生成失败', 'error');
     }
