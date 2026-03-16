@@ -512,10 +512,15 @@ class RedemptionService:
         db_session: AsyncSession
     ) -> int:
         """
-        获取未使用的兑换码数量
+        获取未消耗的兑换码数量
+
+        业务上 distributed 仅表示“已分发”，仍属于可首次兑换状态，
+        因此这里与 unused 一并统计。
         """
         try:
-            stmt = select(func.count(RedemptionCode.id)).where(RedemptionCode.status == "unused")
+            stmt = select(func.count(RedemptionCode.id)).where(
+                RedemptionCode.status.in_(["unused", "distributed"])
+            )
             result = await db_session.execute(stmt)
             return result.scalar() or 0
         except Exception as e:
@@ -579,7 +584,10 @@ class RedemptionService:
         db_session: AsyncSession
     ) -> Dict[str, Any]:
         """
-        获取未使用的兑换码
+        获取未消耗的兑换码
+
+        业务上 distributed 仅表示“已分发”，仍属于可首次兑换状态，
+        因此这里与 unused 一并返回。
 
         Args:
             db_session: 数据库会话
@@ -589,7 +597,7 @@ class RedemptionService:
         """
         try:
             stmt = select(RedemptionCode).where(
-                RedemptionCode.status == "unused"
+                RedemptionCode.status.in_(["unused", "distributed"])
             ).order_by(RedemptionCode.created_at.desc())
 
             result = await db_session.execute(stmt)

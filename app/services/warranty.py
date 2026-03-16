@@ -202,8 +202,8 @@ class WarrantyService:
                 is_valid = True
                 if expiry_date and expiry_date < get_now():
                     is_valid = False
-                elif not expiry_date and code_obj.has_warranty and code_obj.status == "unused":
-                    # 未使用的质保码，暂时标记为有效
+                elif not expiry_date and code_obj.has_warranty and code_obj.status in ["unused", "distributed"]:
+                    # 未消耗的质保码（含已分发未使用），暂时标记为有效
                     is_valid = True
                 elif not expiry_date:
                     # 既没日期也没记录，通常是非质保码

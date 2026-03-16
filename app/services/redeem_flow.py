@@ -239,7 +239,7 @@ class RedeemFlowService:
                                     await retry_db.rollback()
                                     return {"success": False, "error": "兑换码不存在"}
 
-                                if rc.status not in ["unused", "warranty_active"]:
+                                if rc.status not in ["unused", "distributed", "warranty_active"]:
                                     if rc.status == "used":
                                         warranty_check = await self.warranty_service.validate_warranty_reuse(
                                             retry_db, code, email
