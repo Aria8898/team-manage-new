@@ -142,6 +142,10 @@
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
                             <i data-lucide="ticket" style="width: 14px; height: 14px; color: var(--text-muted);"></i>
                             <code>{{ code.code }}</code>
+                            <button onclick="copyCode('{{ code.code }}', '{{ code.status }}')"
+                                class="btn btn-sm btn-icon btn-minimal btn-secondary" title="复制" style="padding: 2px 4px;">
+                                <i data-lucide="copy" style="width: 12px; height: 12px;"></i>
+                            </button>
                         </div>
                     </td>
                     <td>{{ code.channel_label }}</td>
@@ -181,10 +185,6 @@
                     </td>
                     <td style="text-align: right;">
                         <div class="action-buttons" style="justify-content: flex-end;">
-                            <button onclick="copyCode('{{ code.code }}')"
-                                class="btn btn-sm btn-icon btn-minimal btn-secondary" title="复制">
-                                <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
-                            </button>
                             <button
                                 data-code="{{ code.code }}"
                                 data-has-warranty="{{ 'true' if code.has_warranty else 'false' }}"
@@ -465,6 +465,11 @@
     .status-badge.status-distributed {
         background: #fff3cd;
         color: #856404;
+    }
+
+    .status-badge.status-full {
+        background: #f3f4f6;
+        color: #6b7280;
     }
 
     .stat-card.stat-warning {
@@ -842,7 +847,7 @@
     }
 
     // 覆盖全局 copyCode，复制后弹出确认框
-    async function copyCode(code) {
+    async function copyCode(code, status) {
         let fromGenerateModal = false;
         if (!code) {
             const generatedCodeEl = document.getElementById('generatedCode');
@@ -857,6 +862,9 @@
             document.getElementById('singleResult').style.display = 'none';
             document.getElementById('generatedCode').textContent = '';
         }
+        // 已使用/已过期/质保中，静默复制，不弹分发确认框
+        if (['used', 'expired', 'warranty_active', 'distributed'].includes(status)) return;
+
         // 等复制成功 toast 显示后，再弹出分发确认框
         setTimeout(() => {
             _pendingDistributeCode = code;
