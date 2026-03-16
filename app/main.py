@@ -101,7 +101,10 @@ templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 # 注入构建版本号（git short hash）
 def _get_build_version() -> str:
-    import subprocess
+    import os, subprocess
+    v = os.environ.get("BUILD_VERSION")
+    if v:
+        return v
     try:
         r = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"],
