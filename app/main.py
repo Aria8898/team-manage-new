@@ -99,6 +99,21 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 # 配置模板引擎
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
+# 注入构建版本号（git short hash）
+def _get_build_version() -> str:
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            capture_output=True, text=True, cwd=BASE_DIR
+        )
+        count = r.stdout.strip()
+        return f"v1.0.{count}" if count else "dev"
+    except Exception:
+        return "dev"
+
+templates.env.globals["build_version"] = _get_build_version()
+
 # 添加模板过滤器
 def format_datetime(dt):
     """格式化日期时间"""
