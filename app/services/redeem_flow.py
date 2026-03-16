@@ -168,6 +168,7 @@ class RedeemFlowService:
         core_success = False
         success_result = None
         team_id_final = None
+        excluded_team_ids: List[int] = []  # 方案二：记录本次请求中已失败的 team，避免重试时重复选中
 
         # 针对 code 加锁，防止同一个码并发进入兑换
         async with _code_locks[code]:
@@ -180,7 +181,7 @@ class RedeemFlowService:
                     # 确定目标 Team (初选)
                     team_id_final = current_target_team_id
                     if not team_id_final:
-                        select_res = await self.select_team_auto(db_session)
+                        select_res = await self.select_team_auto(db_session, exclude_team_ids=excluded_team_ids or None)
                         if not select_res["success"]:
                             return {"success": False, "error": select_res["error"]}
                         team_id_final = select_res["team_id"]
@@ -202,6 +203,14 @@ class RedeemFlowService:
                         await self.team_service.sync_team_info(
                             team_id_final, db_session
                         )
+
+                        # 方案一：sync 可能检测到 banned/expired 并在内存中修改了 team.status，
+                        # 但因为 sync 自身的 SELECT 已触发 autobegin，_handle_api_error 里
+                        # `if not in_transaction()` 不会 commit。此处显式提交，确保状态变更
+                        # 持久化到 DB，防止后续 rollback 将其抹掉，导致 select_team_auto
+                        # 在下一次重试时仍将该 team 视为 active。
+                        if db_session.in_transaction():
+                            await db_session.commit()
 
                         # 2. 核心校验 (开启短事务)
                         if not db_session.in_transaction():
@@ -408,6 +417,9 @@ class RedeemFlowService:
                     # 判定是否需要换 Team（banned / 不可用），下一轮重新自动选
                     if "不可用" in last_error:
                         current_target_team_id = None
+                        # 方案二：记录该 team，避免重试时因 DB 状态延迟再次选中同一个
+                        if team_id_final and team_id_final not in excluded_team_ids:
+                            excluded_team_ids.append(team_id_final)
 
                     # 判定是否需要永久标记为”满员”
                     if any(
