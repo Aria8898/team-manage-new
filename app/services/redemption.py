@@ -16,6 +16,9 @@ from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
 
+FIRST_REDEEMABLE_STATUSES = {"unused", "distributed"}
+RESTORABLE_CODE_STATUSES = FIRST_REDEEMABLE_STATUSES | {"used", "warranty_active"}
+
 
 class RedemptionService:
     """兑换码管理服务类"""
@@ -363,6 +366,7 @@ class RedemptionService:
             stmt = select(RedemptionCode).where(RedemptionCode.code == code)
             result = await db_session.execute(stmt)
             redemption_code = result.scalar_one_or_none()
+            previous_status = redemption_code.status
 
             redemption_code.status = "used"
             redemption_code.used_by_email = email
@@ -374,7 +378,8 @@ class RedemptionService:
                 email=email,
                 code=code,
                 team_id=team_id,
-                account_id=account_id
+                account_id=account_id,
+                previous_code_status=previous_status,
             )
 
             db_session.add(redemption_record)
@@ -433,9 +438,12 @@ class RedemptionService:
                 ))
             
             if status:
-                if status == 'used':
+                if status == "used":
                     # "已使用" 在查询中通常指窄义的 used, 但如果要包含质保中, 逻辑如下
-                    filters.append(RedemptionCode.status.in_(['used', 'warranty_active']))
+                    filters.append(RedemptionCode.status.in_(["used", "warranty_active"]))
+                elif status == "unused":
+                    # 运营上的“已分发”仍属于可首兑库存，因此并入可首兑筛选。
+                    filters.append(RedemptionCode.status.in_(list(FIRST_REDEEMABLE_STATUSES)))
                 else:
                     filters.append(RedemptionCode.status == status)
 
@@ -727,6 +735,13 @@ class RedemptionService:
                     "error": f"兑换码 {code} 不存在"
                 }
 
+            if redemption_code.status not in FIRST_REDEEMABLE_STATUSES:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": "仅可删除可首兑状态的兑换码"
+                }
+
             # 删除兑换码
             await db_session.delete(redemption_code)
             await db_session.commit()
@@ -754,11 +769,16 @@ class RedemptionService:
         db_session: AsyncSession,
         has_warranty: Optional[bool] = None,
         warranty_days: Optional[int] = None,
-        remark: Optional[str] = None,
-        status: Optional[str] = None
+        remark: Optional[str] = None
     ) -> Dict[str, Any]:
         """更新兑换码信息"""
-        return await self.bulk_update_codes([code], db_session, has_warranty, warranty_days, remark=remark, status=status)
+        return await self.bulk_update_codes(
+            [code],
+            db_session,
+            has_warranty,
+            warranty_days,
+            remark=remark,
+        )
 
     async def withdraw_record(
         self,
@@ -807,10 +827,11 @@ class RedemptionService:
             # 3. 恢复兑换码状态
             code = record.redemption_code
             if code:
-                # 如果是质保兑换，且还有其他记录，状态可能不应该直接回 unused
-                # 但根据逻辑，目前一个码一个记录（除了质保补发可能产生新记录，但那是两个不同的码吧？）
-                # 查了一下模型，RedemptionCode 有 used_by_email 等字段，说明它是单次使用的设计
-                code.status = "unused"
+                restore_status = record.previous_code_status
+                if restore_status not in RESTORABLE_CODE_STATUSES:
+                    restore_status = "distributed"
+
+                code.status = restore_status
                 code.used_by_email = None
                 code.used_team_id = None
                 code.used_at = None
@@ -826,7 +847,7 @@ class RedemptionService:
 
             return {
                 "success": True,
-                "message": f"成功撤回记录并恢复兑换码 {record.code}"
+                "message": f"成功撤回记录并恢复兑换码 {record.code} 为 {code.status} 状态"
             }
 
         except Exception as e:
@@ -842,8 +863,7 @@ class RedemptionService:
         db_session: AsyncSession,
         has_warranty: Optional[bool] = None,
         warranty_days: Optional[int] = None,
-        remark: Optional[str] = None,
-        status: Optional[str] = None
+        remark: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         批量更新兑换码信息
@@ -854,8 +874,6 @@ class RedemptionService:
             has_warranty: 是否为质保兑换码 (可选)
             warranty_days: 质保天数 (可选)
             remark: 备注 (可选, 仅单码更新时使用)
-            status: 状态 (可选, 用于标记已分发等)
-
         Returns:
             结果字典
         """
@@ -871,8 +889,6 @@ class RedemptionService:
                 values[RedemptionCode.warranty_days] = warranty_days
             if remark is not None:
                 values[RedemptionCode.remark] = remark if remark != "" else None
-            if status is not None:
-                values[RedemptionCode.status] = status
 
             if not values:
                 return {"success": True, "message": "没有提供更新内容"}
@@ -896,6 +912,78 @@ class RedemptionService:
                 "success": False,
                 "message": None,
                 "error": f"批量更新失败: {str(e)}"
+            }
+
+    async def mark_codes_distributed(
+        self,
+        codes: List[str],
+        db_session: AsyncSession,
+        remark: Optional[str] = None,
+        has_warranty: Optional[bool] = None,
+        warranty_days: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """将可首兑兑换码标记为已分发，不触碰质保字段。"""
+        try:
+            if not codes:
+                return {"success": True, "message": "没有需要更新的兑换码", "error": None}
+
+            unique_codes = list(dict.fromkeys(codes))
+            stmt = select(RedemptionCode).where(RedemptionCode.code.in_(unique_codes))
+            result = await db_session.execute(stmt)
+            existing_codes = result.scalars().all()
+
+            existing_map = {code.code: code for code in existing_codes}
+            missing_codes = [code for code in unique_codes if code not in existing_map]
+            if missing_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": f"以下兑换码不存在: {', '.join(missing_codes[:5])}"
+                }
+
+            invalid_codes = [
+                code.code
+                for code in existing_codes
+                if code.status not in FIRST_REDEEMABLE_STATUSES
+            ]
+            if invalid_codes:
+                return {
+                    "success": False,
+                    "message": None,
+                    "error": (
+                        "仅可将可首兑状态的兑换码标记为已分发: "
+                        + ", ".join(invalid_codes[:5])
+                    ),
+                }
+
+            values = {RedemptionCode.status: "distributed"}
+            if remark is not None:
+                values[RedemptionCode.remark] = remark if remark != "" else None
+            if has_warranty is not None:
+                values[RedemptionCode.has_warranty] = has_warranty
+            if warranty_days is not None:
+                values[RedemptionCode.warranty_days] = warranty_days
+
+            stmt = (
+                update(RedemptionCode)
+                .where(RedemptionCode.code.in_(unique_codes))
+                .values(values)
+            )
+            await db_session.execute(stmt)
+            await db_session.commit()
+
+            return {
+                "success": True,
+                "message": f"成功标记 {len(unique_codes)} 个兑换码为已分发",
+                "error": None,
+            }
+        except Exception as e:
+            await db_session.rollback()
+            logger.error(f"标记已分发失败: {e}")
+            return {
+                "success": False,
+                "message": None,
+                "error": f"标记已分发失败: {str(e)}",
             }
 
     async def get_stats(
@@ -929,7 +1017,7 @@ class RedemptionService:
 
             return {
                 "total": total,
-                "unused": status_counts.get("unused", 0),
+                "unused": status_counts.get("unused", 0) + status_counts.get("distributed", 0),
                 "distributed": status_counts.get("distributed", 0),
                 "used": used_count,
                 "warranty_active": status_counts.get("warranty_active", 0),

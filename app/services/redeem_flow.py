@@ -358,6 +358,7 @@ class RedeemFlowService:
                                         raise Exception(err)
 
                                 # 成功逻辑
+                                previous_status = rc.status
                                 rc.status = "used"
                                 rc.used_by_email = email
                                 rc.used_team_id = team_id_final
@@ -374,6 +375,7 @@ class RedeemFlowService:
                                     team_id=team_id_final,
                                     account_id=target_team.account_id,
                                     is_warranty_redemption=rc.has_warranty,
+                                    previous_code_status=previous_status,
                                 )
                                 retry_db.add(record)
                                 target_team.current_members += 1

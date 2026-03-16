@@ -20,7 +20,7 @@
         <div class="stat-icon">✅</div>
         <div class="stat-content">
             <div class="stat-value">{{ stats.unused }}</div>
-            <div class="stat-label">未使用</div>
+            <div class="stat-label">可首兑</div>
         </div>
     </div>
     <div class="stat-card stat-warning">
@@ -55,7 +55,7 @@
                     id="filter-all">全部</button>
                 <button onclick="filterByStatus('unused')"
                     class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
-                    id="filter-unused">未使用</button>
+                    id="filter-unused">可首兑</button>
                 <button onclick="filterByStatus('distributed')"
                     class="filter-tab {% if status_filter == 'distributed' %}active{% endif %}"
                     id="filter-distributed">已分发</button>
@@ -383,7 +383,6 @@
         <div class="modal-body">
             <form id="editCodeForm" onsubmit="handleEditCode(event)">
                 <input type="hidden" id="edit-code" name="code">
-                <input type="hidden" id="edit-code-status" name="status">
                 <div class="form-group">
                     <label>兑换码</label>
                     <input type="text" id="edit-code-display" class="form-control" readonly
@@ -755,7 +754,6 @@
     function editCode(code, hasWarranty, warrantyDays, remark, status) {
         document.getElementById('edit-code').value = code;
         document.getElementById('edit-code-display').value = code;
-        document.getElementById('edit-code-status').value = '';
         document.getElementById('edit-remark').value = remark || '';
 
         const statusLabels = {
@@ -784,30 +782,27 @@
     // 从编辑弹窗直接标记已分发
     async function markDistributedFromEdit() {
         const code = document.getElementById('edit-code').value;
-        document.getElementById('edit-code-status').value = 'distributed';
-        // 同时保存当前备注
         const remark = document.getElementById('edit-remark').value;
         const has_warranty = document.getElementById('edit-has-warranty').checked;
         const warranty_days = parseInt(document.getElementById('edit-warranty-days').value) || 30;
 
         try {
-            const response = await fetch(`/admin/codes/${encodeURIComponent(code)}/update`, {
+            const markResponse = await fetch(`/admin/codes/${encodeURIComponent(code)}/mark-distributed`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    has_warranty,
-                    warranty_days: has_warranty ? warranty_days : null,
                     remark: remark || null,
-                    status: 'distributed'
+                    has_warranty,
+                    warranty_days: has_warranty ? warranty_days : null
                 })
             });
-            const result = await response.json();
-            if (response.ok && result.success) {
+            const markResult = await markResponse.json();
+            if (markResponse.ok && markResult.success) {
                 showToast('已标记为已分发', 'success');
                 hideModal('editCodeModal');
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                showToast(result.error || '操作失败', 'error');
+                showToast(markResult.error || '操作失败', 'error');
             }
         } catch (error) {
             showToast('网络错误', 'error');
@@ -879,15 +874,38 @@
     let _pendingDistributeCode = null;
     let _pendingBatchCodes = null;
 
+    function getSelectedCodesForDistribution() {
+        const selected = Array.from(document.querySelectorAll('.code-checkbox:checked'));
+        const eligible = [];
+        const invalid = [];
+
+        selected.forEach(cb => {
+            const row = cb.closest('tr');
+            const rowStatus = row ? row.dataset.status : '';
+            if (['unused', 'distributed'].includes(rowStatus)) {
+                eligible.push(cb.value);
+            } else {
+                invalid.push(cb.value);
+            }
+        });
+
+        if (invalid.length) {
+            showToast(`仅可标记可首兑兑换码，当前有 ${invalid.length} 个不可操作项`, 'error');
+            return null;
+        }
+
+        return eligible;
+    }
+
     async function confirmMarkDistributed() {
         hideModal('copyDistributeModal');
         try {
             if (_pendingBatchCodes && _pendingBatchCodes.length > 0) {
                 // 批量标记
-                const response = await fetch('/admin/codes/bulk-update', {
+                const response = await fetch('/admin/codes/mark-distributed/bulk', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ codes: _pendingBatchCodes, has_warranty: false, status: 'distributed' })
+                    body: JSON.stringify({ codes: _pendingBatchCodes })
                 });
                 const result = await response.json();
                 if (response.ok && result.success) {
@@ -898,10 +916,10 @@
                 }
             } else if (_pendingDistributeCode) {
                 // 单个标记
-                const response = await fetch(`/admin/codes/${encodeURIComponent(_pendingDistributeCode)}/update`, {
+                const response = await fetch(`/admin/codes/${encodeURIComponent(_pendingDistributeCode)}/mark-distributed`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ has_warranty: false, status: 'distributed' })
+                    body: JSON.stringify({})
                 });
                 const result = await response.json();
                 if (response.ok && result.success) {
@@ -939,15 +957,15 @@
 
     // 批量标记已分发
     async function bulkMarkDistributed() {
-        const selected = document.querySelectorAll('.code-checkbox:checked');
-        const codes = Array.from(selected).map(cb => cb.value);
+        const codes = getSelectedCodesForDistribution();
+        if (!codes) return;
         if (!codes.length) return;
 
         try {
-            const response = await fetch('/admin/codes/bulk-update', {
+            const response = await fetch('/admin/codes/mark-distributed/bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ codes, has_warranty: false, status: 'distributed' })
+                body: JSON.stringify({ codes })
             });
             const result = await response.json();
             if (response.ok && result.success) {

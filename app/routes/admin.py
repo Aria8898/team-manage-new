@@ -75,17 +75,27 @@ class TeamUpdateRequest(BaseModel):
 
 class CodeUpdateRequest(BaseModel):
     """兑换码更新请求"""
-    has_warranty: bool = Field(..., description="是否为质保兑换码")
+    has_warranty: Optional[bool] = Field(None, description="是否为质保兑换码")
     warranty_days: Optional[int] = Field(None, description="质保天数")
     remark: Optional[str] = Field(None, description="备注")
-    status: Optional[str] = Field(None, description="状态")
 
 class BulkCodeUpdateRequest(BaseModel):
     """批量兑换码更新请求"""
     codes: List[str] = Field(..., description="兑换码列表")
-    has_warranty: bool = Field(..., description="是否为质保兑换码")
+    has_warranty: Optional[bool] = Field(None, description="是否为质保兑换码")
     warranty_days: Optional[int] = Field(None, description="质保天数")
-    status: Optional[str] = Field(None, description="状态，用于批量标记分发状态")
+
+
+class MarkDistributedRequest(BaseModel):
+    """单个兑换码标记已分发请求"""
+    remark: Optional[str] = Field(None, description="备注")
+    has_warranty: Optional[bool] = Field(None, description="是否为质保兑换码")
+    warranty_days: Optional[int] = Field(None, description="质保天数")
+
+
+class BulkMarkDistributedRequest(BaseModel):
+    """批量标记已分发请求"""
+    codes: List[str] = Field(..., description="兑换码列表")
 
 
 class BulkActionRequest(BaseModel):
@@ -1039,8 +1049,7 @@ async def update_code(
             db_session=db,
             has_warranty=update_data.has_warranty,
             warranty_days=update_data.warranty_days,
-            remark=update_data.remark,
-            status=update_data.status
+            remark=update_data.remark
         )
         if not result["success"]:
             return JSONResponse(
@@ -1066,8 +1075,61 @@ async def bulk_update_codes(
             codes=update_data.codes,
             db_session=db,
             has_warranty=update_data.has_warranty,
-            warranty_days=update_data.warranty_days,
-            status=update_data.status
+            warranty_days=update_data.warranty_days
+        )
+        if not result["success"]:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=result
+            )
+        return JSONResponse(content=result)
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/codes/{code}/mark-distributed")
+async def mark_code_distributed(
+    code: str,
+    request_data: MarkDistributedRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """将单个兑换码标记为已分发。"""
+    try:
+        result = await redemption_service.mark_codes_distributed(
+            codes=[code],
+            db_session=db,
+            remark=request_data.remark,
+            has_warranty=request_data.has_warranty,
+            warranty_days=request_data.warranty_days,
+        )
+        if not result["success"]:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content=result
+            )
+        return JSONResponse(content=result)
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"success": False, "error": str(e)}
+        )
+
+
+@router.post("/codes/mark-distributed/bulk")
+async def bulk_mark_code_distributed(
+    request_data: BulkMarkDistributedRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_admin)
+):
+    """批量将兑换码标记为已分发。"""
+    try:
+        result = await redemption_service.mark_codes_distributed(
+            codes=request_data.codes,
+            db_session=db,
         )
         if not result["success"]:
             return JSONResponse(

@@ -102,6 +102,7 @@ class RedemptionRecord(Base):
     account_id = Column(String(100), nullable=False, comment="Account ID")
     redeemed_at = Column(DateTime, default=get_now, comment="兑换时间")
     is_warranty_redemption = Column(Boolean, default=False, comment="是否为质保兑换")
+    previous_code_status = Column(String(20), comment="兑换前的兑换码状态")
 
     # 关系
     team = relationship("Team", back_populates="redemption_records")
