@@ -77,12 +77,15 @@ class CodeUpdateRequest(BaseModel):
     """兑换码更新请求"""
     has_warranty: bool = Field(..., description="是否为质保兑换码")
     warranty_days: Optional[int] = Field(None, description="质保天数")
+    remark: Optional[str] = Field(None, description="备注")
+    status: Optional[str] = Field(None, description="状态")
 
 class BulkCodeUpdateRequest(BaseModel):
     """批量兑换码更新请求"""
     codes: List[str] = Field(..., description="兑换码列表")
     has_warranty: bool = Field(..., description="是否为质保兑换码")
     warranty_days: Optional[int] = Field(None, description="质保天数")
+    status: Optional[str] = Field(None, description="状态，用于批量标记分发状态")
 
 
 class BulkActionRequest(BaseModel):
@@ -972,7 +975,7 @@ async def export_codes(
         worksheet.set_column('G:G', 12)  # 质保时长
 
         # 写入表头
-        headers = ['兑换码', '状态', '创建时间', '过期时间', '使用者邮箱', '使用时间', '质保时长(天)']
+        headers = ['兑换码', '状态', '创建时间', '过期时间', '使用者邮箱', '使用时间', '质保时长(天)', '备注']
         for col, header in enumerate(headers):
             worksheet.write(0, col, header, header_format)
 
@@ -980,6 +983,7 @@ async def export_codes(
         for row, code in enumerate(all_codes, start=1):
             status_text = {
                 'unused': '未使用',
+                'distributed': '已分发',
                 'used': '已使用',
                 'warranty_active': '质保中',
                 'expired': '已过期'
@@ -992,6 +996,7 @@ async def export_codes(
             worksheet.write(row, 4, code.get('used_by_email', '-'), cell_format)
             worksheet.write(row, 5, code.get('used_at', '-'), cell_format)
             worksheet.write(row, 6, code.get('warranty_days', '-') if code.get('has_warranty') else '-', cell_format)
+            worksheet.write(row, 7, code.get('remark', '') or '', cell_format)
 
         # 关闭workbook
         workbook.close()
@@ -1033,7 +1038,9 @@ async def update_code(
             code=code,
             db_session=db,
             has_warranty=update_data.has_warranty,
-            warranty_days=update_data.warranty_days
+            warranty_days=update_data.warranty_days,
+            remark=update_data.remark,
+            status=update_data.status
         )
         if not result["success"]:
             return JSONResponse(
@@ -1059,7 +1066,8 @@ async def bulk_update_codes(
             codes=update_data.codes,
             db_session=db,
             has_warranty=update_data.has_warranty,
-            warranty_days=update_data.warranty_days
+            warranty_days=update_data.warranty_days,
+            status=update_data.status
         )
         if not result["success"]:
             return JSONResponse(

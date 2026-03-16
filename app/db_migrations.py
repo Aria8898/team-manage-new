@@ -113,6 +113,12 @@ def run_auto_migration():
             cursor.execute("ALTER TABLE redemption_codes ADD COLUMN channel VARCHAR(32)")
             migrations_applied.append("redemption_codes.channel")
 
+        # 检查并添加兑换码备注字段
+        if not column_exists(cursor, "redemption_codes", "remark"):
+            logger.info("添加 redemption_codes.remark 字段")
+            cursor.execute("ALTER TABLE redemption_codes ADD COLUMN remark TEXT")
+            migrations_applied.append("redemption_codes.remark")
+
         # 提交更改
         conn.commit()
         

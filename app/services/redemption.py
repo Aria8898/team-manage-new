@@ -264,7 +264,7 @@ class RedemptionService:
                 }
 
             # 2. 检查状态
-            allowed_statuses = ["unused", "warranty_active"]
+            allowed_statuses = ["unused", "distributed", "warranty_active"]
             if redemption_code.has_warranty:
                 allowed_statuses.append("used")
 
@@ -279,8 +279,8 @@ class RedemptionService:
                     "error": None
                 }
 
-            # 3. 检查是否过期 (仅针对未使用的兑换码执行首次激活截止时间检查)
-            if redemption_code.status == "unused" and redemption_code.expires_at:
+            # 3. 检查是否过期 (仅针对未使用/已分发的兑换码执行首次激活截止时间检查)
+            if redemption_code.status in ("unused", "distributed") and redemption_code.expires_at:
                 if redemption_code.expires_at < get_now():
                     # 更新状态为 expired
                     redemption_code.status = "expired"
@@ -483,7 +483,8 @@ class RedemptionService:
                     "has_warranty": code.has_warranty,
                     "warranty_days": code.warranty_days,
                     "warranty_expires_at": code.warranty_expires_at.isoformat() if code.warranty_expires_at else None,
-                    "channel": code.channel
+                    "channel": code.channel,
+                    "remark": code.remark
                 })
 
             logger.info(f"获取所有兑换码成功: 第 {page} 页, 共 {len(code_list)} 个 / 总数 {total}")
@@ -744,10 +745,12 @@ class RedemptionService:
         code: str,
         db_session: AsyncSession,
         has_warranty: Optional[bool] = None,
-        warranty_days: Optional[int] = None
+        warranty_days: Optional[int] = None,
+        remark: Optional[str] = None,
+        status: Optional[str] = None
     ) -> Dict[str, Any]:
         """更新兑换码信息"""
-        return await self.bulk_update_codes([code], db_session, has_warranty, warranty_days)
+        return await self.bulk_update_codes([code], db_session, has_warranty, warranty_days, remark=remark, status=status)
 
     async def withdraw_record(
         self,
@@ -830,7 +833,9 @@ class RedemptionService:
         codes: List[str],
         db_session: AsyncSession,
         has_warranty: Optional[bool] = None,
-        warranty_days: Optional[int] = None
+        warranty_days: Optional[int] = None,
+        remark: Optional[str] = None,
+        status: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         批量更新兑换码信息
@@ -840,6 +845,8 @@ class RedemptionService:
             db_session: 数据库会话
             has_warranty: 是否为质保兑换码 (可选)
             warranty_days: 质保天数 (可选)
+            remark: 备注 (可选, 仅单码更新时使用)
+            status: 状态 (可选, 用于标记已分发等)
 
         Returns:
             结果字典
@@ -854,6 +861,10 @@ class RedemptionService:
                 values[RedemptionCode.has_warranty] = has_warranty
             if warranty_days is not None:
                 values[RedemptionCode.warranty_days] = warranty_days
+            if remark is not None:
+                values[RedemptionCode.remark] = remark if remark != "" else None
+            if status is not None:
+                values[RedemptionCode.status] = status
 
             if not values:
                 return {"success": True, "message": "没有提供更新内容"}
@@ -902,15 +913,16 @@ class RedemptionService:
             # 由于 "used" 和 "warranty_active" 都属于广义上的 "已使用"
             # 这里的 used 统计需要合并这两个状态
             used_count = status_counts.get("used", 0) + status_counts.get("warranty_active", 0)
-            
+
             # 计算总数
             total_stmt = select(func.count(RedemptionCode.id))
             total_result = await db_session.execute(total_stmt)
             total = total_result.scalar() or 0
-            
+
             return {
                 "total": total,
                 "unused": status_counts.get("unused", 0),
+                "distributed": status_counts.get("distributed", 0),
                 "used": used_count,
                 "warranty_active": status_counts.get("warranty_active", 0),
                 "expired": status_counts.get("expired", 0)

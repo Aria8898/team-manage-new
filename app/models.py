@@ -70,7 +70,7 @@ class RedemptionCode(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(32), unique=True, nullable=False, comment="兑换码")
-    status = Column(String(20), default="unused", comment="状态: unused/used/expired/warranty_active")
+    status = Column(String(20), default="unused", comment="状态: unused/distributed/used/expired/warranty_active")
     created_at = Column(DateTime, default=get_now, comment="创建时间")
     expires_at = Column(DateTime, comment="过期时间")
     used_by_email = Column(String(255), comment="使用者邮箱")
@@ -80,6 +80,7 @@ class RedemptionCode(Base):
     warranty_days = Column(Integer, default=30, comment="质保时长(天)")
     warranty_expires_at = Column(DateTime, comment="质保到期时间(首次使用后根据质保时长计算)")
     channel = Column(String(32), nullable=True, comment="渠道: xianyu/siyou/faka/ldo/ziyong/hezuoshang")
+    remark = Column(Text, nullable=True, comment="备注")
 
     # 关系
     redemption_records = relationship("RedemptionRecord", back_populates="redemption_code")

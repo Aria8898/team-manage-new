@@ -23,6 +23,13 @@
             <div class="stat-label">未使用</div>
         </div>
     </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-icon">📤</div>
+        <div class="stat-content">
+            <div class="stat-value">{{ stats.distributed }}</div>
+            <div class="stat-label">已分发</div>
+        </div>
+    </div>
     <div class="stat-card stat-info">
         <div class="stat-icon">📝</div>
         <div class="stat-content">
@@ -49,6 +56,9 @@
                 <button onclick="filterByStatus('unused')"
                     class="filter-tab {% if status_filter == 'unused' %}active{% endif %}"
                     id="filter-unused">未使用</button>
+                <button onclick="filterByStatus('distributed')"
+                    class="filter-tab {% if status_filter == 'distributed' %}active{% endif %}"
+                    id="filter-distributed">已分发</button>
                 <button onclick="filterByStatus('used')"
                     class="filter-tab {% if status_filter == 'used' %}active{% endif %}" id="filter-used">已使用</button>
                 <button onclick="filterByStatus('expired')"
@@ -117,6 +127,7 @@
                     <th>使用时间</th>
                     <th>质保</th>
                     <th>质保时长</th>
+                    <th>备注</th>
                     <th style="text-align: right;">操作</th>
                 </tr>
             </thead>
@@ -137,6 +148,8 @@
                     <td>
                         {% if code.status == 'unused' %}
                         <span class="status-badge status-active">未使用</span>
+                        {% elif code.status == 'distributed' %}
+                        <span class="status-badge status-distributed">已分发</span>
                         {% elif code.status == 'used' %}
                         <span class="status-badge status-full">已使用</span>
                         {% elif code.status == 'warranty_active' %}
@@ -163,6 +176,9 @@
                         -
                         {% endif %}
                     </td>
+                    <td>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">{{ code.remark if code.remark else '' }}</span>
+                    </td>
                     <td style="text-align: right;">
                         <div class="action-buttons" style="justify-content: flex-end;">
                             <button onclick="copyCode('{{ code.code }}')"
@@ -170,11 +186,16 @@
                                 <i data-lucide="copy" style="width: 14px; height: 14px;"></i>
                             </button>
                             <button
-                                onclick="editCode('{{ code.code }}', {{ 'true' if code.has_warranty else 'false' }}, {{ code.warranty_days or 30 }})"
+                                data-code="{{ code.code }}"
+                                data-has-warranty="{{ 'true' if code.has_warranty else 'false' }}"
+                                data-warranty-days="{{ code.warranty_days or 30 }}"
+                                data-remark="{{ code.remark | e if code.remark else '' }}"
+                                data-status="{{ code.status }}"
+                                onclick="editCodeFromBtn(this)"
                                 class="btn btn-sm btn-icon btn-minimal btn-info" title="编辑">
                                 <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
                             </button>
-                            {% if code.status == 'unused' %}
+                            {% if code.status in ('unused', 'distributed') %}
                             <button onclick="deleteCode('{{ code.code }}')"
                                 class="btn btn-sm btn-icon btn-minimal btn-danger" title="删除">
                                 <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
@@ -194,6 +215,9 @@
             已选择 <span id="selectedCount">0</span> 个兑换码
         </div>
         <div class="bulk-actions">
+            <button onclick="bulkMarkDistributed()" class="btn btn-warning">
+                <i data-lucide="send" style="width: 16px; height: 16px;"></i> 批量标记已分发
+            </button>
             <button onclick="showBulkEditModal()" class="btn btn-primary">
                 <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i> 批量修改质保
             </button>
@@ -332,6 +356,23 @@
     </div>
 </div>
 
+<!-- 复制后确认分发模态框 -->
+<div id="copyDistributeModal" class="modal-overlay">
+    <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3>已复制到剪贴板</h3>
+            <button class="modal-close" onclick="hideModal('copyDistributeModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom: 1rem; color: var(--text-muted);">是否将兑换码 <code id="copy-distribute-code"></code> 标记为「已分发」？</p>
+            <div style="display: flex; gap: 0.5rem;">
+                <button onclick="confirmMarkDistributed()" class="btn btn-warning">标记已分发</button>
+                <button onclick="hideModal('copyDistributeModal')" class="btn btn-secondary">跳过</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 编辑兑换码模态框 -->
 <div id="editCodeModal" class="modal-overlay">
     <div class="modal">
@@ -342,13 +383,23 @@
         <div class="modal-body">
             <form id="editCodeForm" onsubmit="handleEditCode(event)">
                 <input type="hidden" id="edit-code" name="code">
+                <input type="hidden" id="edit-code-status" name="status">
                 <div class="form-group">
                     <label>兑换码</label>
                     <input type="text" id="edit-code-display" class="form-control" readonly
                         style="background: rgba(0,0,0,0.05);">
                 </div>
                 <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 1rem;">
+                    <label>当前状态</label>
+                    <div id="edit-code-status-display" style="margin-top: 0.25rem;"></div>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <textarea id="edit-remark" name="remark" class="form-control" rows="2"
+                        placeholder="例如：已送给张三，2026-03-16" style="resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-top: 0.5rem;">
                         <input type="checkbox" id="edit-has-warranty" name="hasWarranty" style="width: auto; margin: 0;"
                             onchange="toggleWarrantyDays(this, 'edit-warranty-days-group')">
                         <span>质保兑换码 (可重复使用)</span>
@@ -359,7 +410,11 @@
                     <input type="number" id="edit-warranty-days" name="warrantyDays" class="form-control" value="30"
                         min="1" max="3650">
                 </div>
-                <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">保存修改</button>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                    <button type="button" id="edit-mark-distributed-btn" onclick="markDistributedFromEdit()"
+                        class="btn btn-warning">标记为已分发</button>
+                </div>
             </form>
         </div>
     </div>
@@ -405,6 +460,25 @@
     .bulk-actions {
         display: flex;
         gap: 0.5rem;
+    }
+
+    .status-badge.status-distributed {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .stat-card.stat-warning {
+        border-left: 4px solid #f59e0b;
+    }
+
+    .btn-warning {
+        background: #f59e0b;
+        color: #fff;
+        border: none;
+    }
+
+    .btn-warning:hover {
+        background: #d97706;
     }
 </style>
 {% endblock %}
@@ -643,10 +717,35 @@
         }
     }
 
+    // 从 data 属性打开编辑弹窗
+    function editCodeFromBtn(btn) {
+        const code = btn.dataset.code;
+        const hasWarranty = btn.dataset.hasWarranty === 'true';
+        const warrantyDays = parseInt(btn.dataset.warrantyDays) || 30;
+        const remark = btn.dataset.remark || '';
+        const status = btn.dataset.status;
+        editCode(code, hasWarranty, warrantyDays, remark, status);
+    }
+
     // 编辑兑换码
-    function editCode(code, hasWarranty, warrantyDays) {
+    function editCode(code, hasWarranty, warrantyDays, remark, status) {
         document.getElementById('edit-code').value = code;
         document.getElementById('edit-code-display').value = code;
+        document.getElementById('edit-code-status').value = '';
+        document.getElementById('edit-remark').value = remark || '';
+
+        const statusLabels = {
+            'unused': '<span class="status-badge status-active">未使用</span>',
+            'distributed': '<span class="status-badge status-distributed">已分发</span>',
+            'used': '<span class="status-badge status-full">已使用</span>',
+            'warranty_active': '<span class="status-badge status-info">质保中</span>',
+            'expired': '<span class="status-badge status-error">已过期</span>'
+        };
+        document.getElementById('edit-code-status-display').innerHTML = statusLabels[status] || status;
+
+        // 已分发/未使用才显示"标记已分发"按钮
+        const markBtn = document.getElementById('edit-mark-distributed-btn');
+        markBtn.style.display = (status === 'unused' || status === 'distributed') ? '' : 'none';
 
         const hasWarrantyCheckbox = document.getElementById('edit-has-warranty');
         hasWarrantyCheckbox.checked = hasWarranty;
@@ -654,10 +753,41 @@
         const warrantyDaysInput = document.getElementById('edit-warranty-days');
         warrantyDaysInput.value = warrantyDays || 30;
 
-        // 触发显示/隐藏
         toggleWarrantyDays(hasWarrantyCheckbox, 'edit-warranty-days-group');
-
         showModal('editCodeModal');
+    }
+
+    // 从编辑弹窗直接标记已分发
+    async function markDistributedFromEdit() {
+        const code = document.getElementById('edit-code').value;
+        document.getElementById('edit-code-status').value = 'distributed';
+        // 同时保存当前备注
+        const remark = document.getElementById('edit-remark').value;
+        const has_warranty = document.getElementById('edit-has-warranty').checked;
+        const warranty_days = parseInt(document.getElementById('edit-warranty-days').value) || 30;
+
+        try {
+            const response = await fetch(`/admin/codes/${encodeURIComponent(code)}/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    has_warranty,
+                    warranty_days: has_warranty ? warranty_days : null,
+                    remark: remark || null,
+                    status: 'distributed'
+                })
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                showToast('已标记为已分发', 'success');
+                hideModal('editCodeModal');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(result.error || '操作失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
     }
 
     async function handleEditCode(event) {
@@ -665,16 +795,16 @@
         const code = document.getElementById('edit-code').value;
         const has_warranty = document.getElementById('edit-has-warranty').checked;
         const warranty_days = parseInt(document.getElementById('edit-warranty-days').value) || 30;
+        const remark = document.getElementById('edit-remark').value;
 
         try {
             const response = await fetch(`/admin/codes/${encodeURIComponent(code)}/update`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     has_warranty,
-                    warranty_days: has_warranty ? warranty_days : null
+                    warranty_days: has_warranty ? warranty_days : null,
+                    remark: remark || null
                 })
             });
 
@@ -686,6 +816,63 @@
                 setTimeout(() => window.location.reload(), 1000);
             } else {
                 showToast(result.error || '更新失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // 覆盖全局 copyCode，复制后弹出确认框
+    function copyCode(code) {
+        if (!code) return;
+        copyToClipboard(code);
+        _pendingDistributeCode = code;
+        document.getElementById('copy-distribute-code').textContent = code;
+        showModal('copyDistributeModal');
+    }
+
+    // 复制后确认是否标记已分发
+    let _pendingDistributeCode = null;
+
+    async function confirmMarkDistributed() {
+        if (!_pendingDistributeCode) return;
+        hideModal('copyDistributeModal');
+        try {
+            const response = await fetch(`/admin/codes/${encodeURIComponent(_pendingDistributeCode)}/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ has_warranty: false, status: 'distributed' })
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                showToast('已标记为已分发', 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(result.error || '标记失败', 'error');
+            }
+        } catch (error) {
+            showToast('网络错误', 'error');
+        }
+    }
+
+    // 批量标记已分发
+    async function bulkMarkDistributed() {
+        const selected = document.querySelectorAll('.code-checkbox:checked');
+        const codes = Array.from(selected).map(cb => cb.value);
+        if (!codes.length) return;
+
+        try {
+            const response = await fetch('/admin/codes/bulk-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ codes, has_warranty: false, status: 'distributed' })
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                showToast(`已将 ${codes.length} 个兑换码标记为已分发`, 'success');
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(result.error || '操作失败', 'error');
             }
         } catch (error) {
             showToast('网络错误', 'error');
