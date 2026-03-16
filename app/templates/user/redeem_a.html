@@ -7,6 +7,8 @@
 {% block header_title %}GPT Team 兑换{% endblock %}
 {% block header_subtitle %}使用兑换码加入 ChatGPT Team{% endblock %}
 
+{% block spots_number %}{{ (remaining_spots * 0.6) | int }}{% endblock %}
+
 {% block extra_entries %}{% endblock %}
 
 {% block extra_script %}
