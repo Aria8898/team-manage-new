@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import RedemptionCode, RedemptionRecord, Team
+from app.database import AsyncSessionLocal
 from app.utils.time_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -339,7 +340,8 @@ class WarrantyService:
                         # --- 自愈逻辑：验证是否真的在 Team 中 ---
                         # 针对“虚假成功”导致的拉人记录残留进行清理
                         logger.info(f"验证质保重复使用: 发现活跃 record，正在同步 Team {team.id} 以校验成员是否存在")
-                        sync_res = await self.team_service.sync_team_info(team.id, db_session)
+                        async with AsyncSessionLocal() as sync_session:
+                            sync_res = await self.team_service.sync_team_info(team.id, sync_session)
                         member_emails = [m.lower() for m in sync_res.get("member_emails", [])]
                         
                         if record.email.lower() not in member_emails:
